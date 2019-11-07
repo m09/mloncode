@@ -1,6 +1,7 @@
-# formatml
-[![Travis build status](https://img.shields.io/travis/com/src-d/formatml.svg)](https://travis-ci.com/src-d/formatml)
-[![Code coverage](https://img.shields.io/codecov/c/github/src-d/formatml.svg)](https://codecov.io/gh/src-d/formatml)
-[![License](https://img.shields.io/github/license/src-d/formatml.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+# mloncode
 
-Formatting with meta learning experiments.
+![Build Status](https://github.com/m09/mloncode/workflows/CI/badge.svg)
+[![codecov](https://codecov.io/gh/m09/mloncode/branch/master/graph/badge.svg)](https://codecov.io/gh/m09/mloncode)
+[![License](https://img.shields.io/github/license/m09/mloncode.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+
+Machine Learning on Code.

@@ -1,0 +1,67 @@
+name: CI
+
+on: [push]
+
+jobs:
+  style:
+    name: Check style conventions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v1
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7
+      - name: Setup the checking tools
+        run: pip install -r requirements-dev.txt
+      - name: Test the package style conventions
+        run: make check
+  test-python-36:
+    name: Test on Python 3.6
+    needs:
+      - style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v1
+      - name: Set up Python 3.6
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.6
+      - name: Setup the package
+        run: >-
+          pip install https://download.pytorch.org/whl/cpu/torch-1.3.0%2Bcpu-cp36-cp36m-linux_x86_64.whl
+          && pip install dgl
+          && pip install ".[test]"
+      - name: Launch bblfshd
+        run: make bblfshd
+      - name: Test the package
+        run: pytest
+  test-python-37:
+    name: Test on Python 3.7
+    needs:
+      - style
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v1
+      - name: Set up Python 3.7
+        uses: actions/setup-python@v1
+        with:
+          python-version: 3.7
+      - name: Setup the package
+        run: >-
+          pip install https://download.pytorch.org/whl/cpu/torch-1.3.0%2Bcpu-cp37-cp37m-linux_x86_64.whl
+          && pip install dgl
+          && pip install ".[test]"
+      - name: Launch bblfshd
+        run: make bblfshd
+      - name: Test the package
+        run: coverage run -m pytest
+      - name: Create and upload coverage report
+        run: >-
+          coverage xml --include "mloncode/*"
+          && codecov -t ${{ secrets.CODECOV_TOKEN }}
+          -f coverage.xml
+          -b ${{ github.ref }}
