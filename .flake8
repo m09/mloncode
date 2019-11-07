@@ -4,7 +4,7 @@ max-line-length=88
 exclude=
     .git
 import-order-style=appnexus
-application-package-names=formatml
+application-package-names=mloncode
 per-file-ignores=
     **/tests/*:D
     **/test*.py:D

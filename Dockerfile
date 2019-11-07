@@ -1,13 +1,13 @@
 FROM ubuntu:18.04
 
-RUN mkdir /formatml
+RUN mkdir /mloncode
 
-WORKDIR /formatml
+WORKDIR /mloncode
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-ENV FORMATML_BBLFSHD_NAME formatml_bblfshd
-ENV FORMATML_BBLFSHD_PORT 9432
+ENV MLONCODE_BBLFSHD_NAME mloncode_bblfshd
+ENV MLONCODE_BBLFSHD_PORT 9432
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -44,14 +44,13 @@ RUN apt-get update \
     python3.7-dev \
     wget \
     && apt-get remove -y .*-doc .*-man >/dev/null \
-    && apt-get autoremove --purge -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 COPY setup.py .
 COPY README.md .
-COPY formatml ./formatml
+COPY mloncode ./mloncode
 
 RUN pip3.7 install --no-cache-dir .
 
-ENTRYPOINT ["formatml"]
+ENTRYPOINT ["mloncode"]

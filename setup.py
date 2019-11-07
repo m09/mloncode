@@ -15,23 +15,42 @@ except ImportError:
         file=stderr,
     )
 
-loader = SourceFileLoader("formatml", "./formatml/__init__.py")
-formatml = ModuleType(loader.name)
-loader.exec_module(formatml)
+loader = SourceFileLoader("mloncode", "./mloncode/__init__.py")
+mloncode = ModuleType(loader.name)
+loader.exec_module(mloncode)
 
 setup(
-    name="formatml",
-    version=formatml.__version__,  # type: ignore
-    description="Formatting with meta-learning experiments.",
+    name="mloncode",
+    version=mloncode.__version__,  # type: ignore
+    description="ML on Code.",
     long_description=(Path(__file__).parent / "README.md").read_text(encoding="utf-8"),
     long_description_content_type="text/markdown",
-    author="source{d}",
-    author_email="machine-learning@sourced.tech",
+    author="Machine Learning on Code Organization",
+    author_email="contact@mlonco.de",
     python_requires=">=3.6.0",
-    url="https://github.com/src-d/formatml",
+    url="https://github.com/mloncode/mloncode",
     packages=find_packages(exclude=["tests"]),
-    entry_points={"console_scripts": ["formatml=formatml.__main__:main"]},
-    install_requires=["coloredlogs", "bblfsh <3.0", "asdf", "dulwich", "tensorboard"],
+    entry_points={"console_scripts": ["mloncode=mloncode.__main__:main"]},
+    install_requires=[
+        "coloredlogs",
+        "bblfsh <3.0",
+        "asdf",
+        "dulwich",
+        "matplotlib",
+        "tensorflow",
+    ],
+    extras_require=dict(
+        test=["codecov", "pytest"],
+        dev=[
+            "flake8",
+            "flake8-bugbear",
+            "flake8-docstrings",
+            "flake8-import-order",
+            "pylint",
+            "mypy",
+            "black",
+        ],
+    ),
     include_package_data=True,
     license="Apache-2.0",
     classifiers=[
