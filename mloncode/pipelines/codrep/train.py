@@ -3,12 +3,14 @@ from bz2 import open as bz2_open
 from enum import Enum
 from pathlib import Path
 from pickle import load as pickle_load
-from typing import List, Optional
+from typing import Optional
 
+from pytorch_lightning import Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
+from torch import device as torch_device
+from torch.cuda import is_available as cuda_is_available
 from torch.nn import Linear, LSTM, Module, Sequential
-from torch.optim import Adam, SGD
-from torch.optim.lr_scheduler import StepLR
-from torch.optim.optimizer import Optimizer as TorchOptimizer
+from torch.utils.data import Dataset, random_split
 
 from mloncode.data.instance import Instance
 from mloncode.datasets.codrep_dataset import CodRepDataset
@@ -20,7 +22,6 @@ from mloncode.modules.misc.squeezer import Squeezer
 from mloncode.modules.misc.unsqueezer import Unsqueezer
 from mloncode.pipelines.codrep.cli_builder import CLIBuilder
 from mloncode.pipelines.pipeline import register_step
-from mloncode.training.trainer import Trainer
 from mloncode.utils.config import Config
 from mloncode.utils.helpers import setup_logging
 
@@ -70,39 +71,20 @@ def add_arguments_to_parser(parser: ArgumentParser) -> None:
         default=DecoderType.FF.value,
     )
     parser.add_argument(
-        "--optimizer-type",
-        help="Optimizer to use (defaults to %(default)s).",
-        default="adam",
-        choices=[o.value for o in Optimizer],
+        "--model-batch-size",
+        help="Size of the training batches (defaults to %(default)s).",
+        type=int,
+        default=10,
     )
     parser.add_argument(
-        "--optimizer-learning-rate",
+        "--model-learning-rate",
         help="Learning rate of the optimizer (defaults to %(default)s).",
         type=float,
         default=0.001,
     )
     parser.add_argument(
-        "--scheduler-step-size",
-        help="Number of epochs before the scheduler reduces the learning rate "
-        "(defaults to %(default)s).",
-        type=int,
-        default=1,
-    )
-    parser.add_argument(
-        "--scheduler-gamma",
-        help="Factor of the learning rate reduction (defaults to %(default)s).",
-        type=float,
-        default=0.8,
-    )
-    parser.add_argument(
         "--trainer-epochs",
         help="Number of epochs to train for (defaults to %(default)s).",
-        type=int,
-        default=10,
-    )
-    parser.add_argument(
-        "--trainer-batch-size",
-        help="Size of the training batches (defaults to %(default)s).",
         type=int,
         default=10,
     )
@@ -124,12 +106,6 @@ def add_arguments_to_parser(parser: ArgumentParser) -> None:
         "Rest goes to evaluation.",
         type=float,
         default=0.90,
-    )
-    parser.add_argument(
-        "--trainer-metric-names",
-        help="Names of the metrics to use (defaults to %(default)s).",
-        nargs="+",
-        default=["mrr", "cross_entropy"],
     )
     parser.add_argument(
         "--trainer-selection-metric",
@@ -163,16 +139,12 @@ def train(
     model_encoder_output_dim: int,
     model_encoder_message_dim: int,
     model_decoder_type: str,
-    optimizer_type: str,
-    optimizer_learning_rate: float,
-    scheduler_step_size: int,
-    scheduler_gamma: float,
+    model_learning_rate: float,
+    model_batch_size: int,
     trainer_epochs: int,
-    trainer_batch_size: int,
     trainer_eval_every: int,
     trainer_limit_epochs_at: Optional[int],
     trainer_train_eval_split: float,
-    trainer_metric_names: List[str],
     trainer_selection_metric: str,
     trainer_kept_checkpoints: int,
     trainer_cuda: Optional[int],
@@ -194,44 +166,49 @@ def train(
     dataset = CodRepDataset(input_dir=tensors_dir_path)
     logger.info("Dataset of size %d", len(dataset))
 
+    train_length = round(0.9 * len(dataset))
+    eval_length = round(0.05 * len(dataset))
+    test_length = len(dataset) - train_length - eval_length
+
+    train_dataset, eval_dataset, test_dataset = random_split(
+        dataset, [train_length, eval_length, test_length]
+    )
+
+    if trainer_cuda is not None:
+        if not cuda_is_available():
+            raise RuntimeError("CUDA is not available on this system.")
+        device = torch_device("cuda:%d" % trainer_cuda)
+    else:
+        device = torch_device("cpu")
     model = build_model(
         instance=instance,
         model_encoder_iterations=model_encoder_iterations,
         model_encoder_output_dim=model_encoder_output_dim,
         model_encoder_message_dim=model_encoder_message_dim,
         model_decoder_type=model_decoder_type,
+        model_learning_rate=model_learning_rate,
+        model_batch_size=model_batch_size,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        test_dataset=test_dataset,
     )
     # The model needs a forward to be completely initialized.
-    model(instance.collate([dataset[0]]))
+    model.training_step(instance.collate([dataset[0]]), 0)
     logger.info("Configured model %s", model)
 
-    if Optimizer(optimizer_type) is Optimizer.Adam:
-        optimizer: TorchOptimizer = Adam(
-            params=model.parameters(), lr=optimizer_learning_rate
-        )
-    else:
-        optimizer = SGD(params=model.parameters(), lr=optimizer_learning_rate)
-    scheduler = StepLR(
-        optimizer=optimizer, step_size=scheduler_step_size, gamma=scheduler_gamma
+    checkpoint_callback = ModelCheckpoint(
+        filepath=train_dir,
+        save_best_only=True,
+        verbose=True,
+        monitor="eval_mrr",
+        mode="max",
+        prefix="",
     )
+
     trainer = Trainer(
-        instance=instance,
-        epochs=trainer_epochs,
-        batch_size=trainer_batch_size,
-        eval_every=trainer_eval_every,
-        train_eval_split=trainer_train_eval_split,
-        limit_epochs_at=trainer_limit_epochs_at,
-        metric_names=trainer_metric_names,
-        selection_metric=trainer_selection_metric,
-        kept_checkpoints=trainer_kept_checkpoints,
-        run_dir_path=train_dir_path,
-        dataset=dataset,
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        cuda_device=trainer_cuda,
+        default_save_path=train_dir, checkpoint_callback=checkpoint_callback
     )
-    trainer.train()
+    trainer.fit(model)
 
 
 def build_model(
@@ -240,6 +217,11 @@ def build_model(
     model_encoder_output_dim: int,
     model_encoder_message_dim: int,
     model_decoder_type: str,
+    model_learning_rate: float,
+    model_batch_size: int,
+    train_dataset: Dataset,
+    eval_dataset: Optional[Dataset],
+    test_dataset: Optional[Dataset],
 ) -> CodRepModel:
     graph_field = instance.get_field_by_type("graph")
     label_field = instance.get_field_by_type("label")
@@ -280,4 +262,10 @@ def build_model(
         feature_field_names=feature_names,
         indexes_field_name=indexes_field.name,
         label_field_name=label_field.name,
+        batch_size=model_batch_size,
+        lr=model_learning_rate,
+        instance=instance,
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
+        test_dataset=test_dataset,
     )

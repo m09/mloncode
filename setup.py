@@ -37,7 +37,9 @@ setup(
         "asdf",
         "dulwich",
         "matplotlib",
+        "pytorch-lightning",
         "tensorflow",
+        "Pillow",
     ],
     extras_require=dict(
         test=["codecov", "pytest"],

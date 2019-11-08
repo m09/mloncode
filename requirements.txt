@@ -3,4 +3,6 @@ bblfsh < 3.0
 asdf
 dulwich
 matplotlib
+pytorch-lightning
 tensorflow
+Pillow
