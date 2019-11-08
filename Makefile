@@ -15,4 +15,7 @@ bblfshd:
 			bblfsh/bblfshd:v2.14.0-drivers \
 			--log-level DEBUG
 
-.PHONY: check bblfshd
+build:
+	docker build -t mloncode/mloncode:latest .
+
+.PHONY: bblfshd build check

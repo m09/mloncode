@@ -36,6 +36,8 @@ RUN apt-get update \
     python3-distutils \
     wget \
     && wget -O - https://bootstrap.pypa.io/get-pip.py | python3.7 \
+    && pip3.7 install https://download.pytorch.org/whl/cpu/torch-1.3.0%2Bcpu-cp37-cp37m-linux_x86_64.whl \
+    && pip3.7 install dgl \
     && pip3.7 install --no-cache-dir -r requirements.txt \
     && apt-get remove -y \
     libxml2-dev \

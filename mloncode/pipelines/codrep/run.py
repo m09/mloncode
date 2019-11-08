@@ -6,7 +6,6 @@ from pickle import load as pickle_load
 from typing import Optional
 
 from torch import load as torch_load, no_grad
-from torch.utils.data import DataLoader
 
 from mloncode.datasets.codrep_dataset import CodRepDataset
 from mloncode.pipelines.codrep.cli_builder import CLIBuilder
@@ -106,9 +105,15 @@ def run(
         model_encoder_message_dim=training_configs["train"]["options"][
             "model_encoder_message_dim"
         ],
+        model_learning_rate=training_configs["train"]["options"]["model_learning_rate"],
+        model_batch_size=training_configs["train"]["options"]["model_batch_size"],
+        train_dataset=dataset,
+        eval_dataset=None,
+        test_dataset=None,
     )
+
     # The model needs a forward to be completely initialized.
-    model(instance.collate([dataset[0]]))
+    model.training_step(instance.collate([dataset[0]]), 0)
     logger.info(f"Configured model {model}")
 
     model.load_state_dict(
@@ -117,23 +122,35 @@ def run(
     model.eval()
     logger.info(f"Loaded model parameters from %s", checkpoint_file)
 
-    dataloader = DataLoader(
-        dataset,
-        shuffle=False,
-        collate_fn=instance.collate,
-        batch_size=10,
-        num_workers=1,
-    )
-
     metadata = None if metadata_dir is None else model.build_metadata()
     metadata_output = (
         None if metadata_dir is None else Path(metadata_dir) / "metadata.json"
     )
 
+    dataloader = model.train_dataloader()
+
+    graph_field = instance.get_field_by_type("graph")
+    label_field = instance.get_field_by_type("label")
+    indexes_field = instance.get_field_by_type("indexes")
+    metadata_field = instance.get_field_by_type("metadata")
+    graph_input_fields = instance.get_fields_by_type("input")
+    graph_input_dimensions = [48, 48, 32]
+    feature_names = [field.name for field in graph_input_fields]
     with no_grad():
-        for sample in dataloader:
-            sample = model(sample)
-            model.decode(sample=sample, prefix=prefix, metadata=metadata)
+        for batch in dataloader:
+            graph, etypes = batch[graph_field.name]
+            features = [batch[field_name] for field_name in feature_names]
+            indexes, offsets = batch[indexes_field.name].indexes
+            forward = model.forward(graph, etypes, features, indexes)
+            model.decode(
+                batched_graph=graph,
+                indexes=indexes,
+                offsets=offsets,
+                forward=forward,
+                paths=batch[metadata_field.name],
+                prefix=prefix,
+                metadata=metadata,
+            )
 
     if metadata_output is not None:
         with metadata_output.open("w", encoding="utf8") as fh:
